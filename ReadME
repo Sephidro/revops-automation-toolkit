@@ -1,0 +1,36 @@
+# Google Sheets CRM & Email Automation
+
+A lightweight, serverless CRM built entirely in Google Sheets. It handles lead management, batch email automation, and activity logging without any monthly fees.
+
+## Features
+- **Batch Emailing:** Sends "Welcome" and timed "Follow-up" emails automatically.
+- **Settings UI:** A custom HTML sidebar to manage templates and school info without touching code.
+- **Activity Logging:** Automatically logs every email sent to an audit trail.
+- **Token Replacement:** Use `{ParentName}`, `{SchoolName}`, etc., in your templates.
+
+## Setup Instructions
+
+1. **Create a Google Sheet:**
+   - Create a new Google Sheet.
+   - Rename the first tab to `Enrollment CRM`.
+   - Add these headers to row 1: `Date`, `Parent Name`, `Email`, `Stage`, `Last Contact`.
+
+2. **Install the Script:**
+   - Go to `Extensions > Apps Script`.
+   - Delete any existing code.
+   - Create 4 files (`EmailSystem.gs`, `SettingsSystem.gs`, `Utilities.gs`, `SettingsDialog.html`).
+   - Copy and paste the code provided in this repository into those files.
+
+3. **Initialize:**
+   - Refresh your Google Sheet.
+   - You will see a new menu: `⚙️ Admin Tools`.
+   - Click `⚙️ Admin Tools > Reset Templates` (Authorize the script when asked).
+   - Click `⚙️ Admin Tools > Open Settings` to configure your school name and signature.
+
+## Usage
+
+**Daily Trigger:**
+To automate follow-ups, go to the Apps Script editor, click the "Clock" icon (Triggers), and add a new trigger:
+- Function: `runDailyFollowUps`
+- Event Source: `Time-driven`
+- Timer: `Day timer` (e.g., 10am to 11am).
