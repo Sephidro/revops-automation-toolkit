@@ -55,6 +55,27 @@ Go to the **Enrollment CRM** tab and add a lead manually (or connect it to a Goo
 * **Welcome Series:** Click **⚙️ School CRM > 2. Send Welcome Series**. The system will scan for anyone marked `New Lead`, send the "Initial Response" template, and change their stage to `Welcome Series Started`.
 * **Automated Follow-ups:** Click **⚙️ School CRM > ▶️ Start Automation**. This creates a background trigger that runs daily at 10 AM. It checks if leads have been sitting for 3 days and sends the appropriate follow-up.
 
+## ⚠️ Important Workflows
+
+### 1. Connecting a Google Form (Recommended)
+To let parents sign up automatically:
+1. Go to `Tools > Create a new form`.
+2. Add questions for Parent Name, Email, etc.
+3. In the Spreadsheet, you will see a new tab (e.g., "Form Responses 1").
+4. **Rename** that tab to `Enrollment CRM`.
+5. Ensure the column headers match what the script expects (ParentName, Email, etc.).
+
+### 2. Handling Replies (Critical!)
+This system is **one-way**. It does not check your Inbox.
+* **Scenario:** If a parent replies to an email, the system does NOT know.
+* **Your Job:** When you receive a reply, you must manually update that lead's Stage in the spreadsheet (e.g., change `New Lead` to `Contact Made`).
+* **Why:** If you don't change the stage, the system will continue sending the automated follow-up emails.
+
+### 3. Gmail Sending Limits
+* **Free Gmail Accounts:** ~100 emails/day.
+* **Google Workspace (Paid):** ~1,500 emails/day.
+* The script logs errors to the `ActivityLog` tab if you hit these limits.
+
 ## 🎨 Customizing Templates
 Go to the **EmailTemplates** tab. You can edit the Subject and Content.
 * **Tokens:** You can use `{ParentName}`, `{ChildName}`, `{SchoolName}`, etc. inside your email body.
