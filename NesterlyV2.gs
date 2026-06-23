@@ -34,7 +34,7 @@ var CONFIG = {
     TEMPLATES:  'EmailTemplates',
     LOG:        'ActivityLog',
     SETTINGS:   'Settings',
-    SCHOOLMINT: 'Application Import'
+    APP_IMPORT: 'Application Import'
   },
   STAGES: {
     NEW:       'New Lead',
@@ -49,7 +49,7 @@ var CONFIG = {
     COMPLETE:  'Sequence Complete',
     UNSUB:     'Unsubscribed'
   },
-  SM_STATUS: {
+  APP_STATUS: {
     NOT_CHECKED: 'Not Checked',
     NO_ACTIVITY: 'No Activity',
     DRAFT:       'Draft Started',
@@ -145,7 +145,7 @@ function initDefaultSettings(ss) {
 }
 
 function setupImportTab(ss) {
-  var name = CONFIG.SHEET_NAMES.SCHOOLMINT;
+  var name = CONFIG.SHEET_NAMES.APP_IMPORT;
   var sheet = ss.getSheetByName(name);
   if (sheet) return sheet;
 
@@ -164,18 +164,24 @@ function setupImportTab(ss) {
 
   sheet.getRange(1, 1, instructions.length, 6).setValues(instructions);
 
+  // Title row
   sheet.getRange(1, 1, 1, 6)
     .merge()
     .setFontSize(13)
     .setFontWeight('bold')
     .setFontColor('#1a73e8')
-    .setBackground('#e8f0fe');
+    .setBackground('#e8f0fe')
+    .setWrap(true);
 
-  sheet.getRange(3, 1, 5, 6).forEach(function(cell) {});
-  sheet.getRange(3, 1, 5, 1)
-    .setFontColor('#555')
-    .setFontStyle('italic');
+  // Instruction rows — merge across columns so text isn't cut off
+  for (var r = 3; r <= 7; r++) {
+    sheet.getRange(r, 1, 1, 6)
+      .merge()
+      .setFontColor('#555')
+      .setWrap(true);
+  }
 
+  // Example header row
   sheet.getRange(8, 1, 1, 6)
     .setFontWeight('bold')
     .setBackground('#1a73e8')
@@ -188,8 +194,6 @@ function setupImportTab(ss) {
   sheet.setColumnWidth(4, 180);
   sheet.setColumnWidth(5, 150);
   sheet.setColumnWidth(6, 150);
-
-  sheet.getRange(1, 1, instructions.length, 6).setWrap(true);
 
   return sheet;
 }
@@ -278,7 +282,7 @@ function addLead(lead, sendEmail) {
     '',                               // SequenceStartedAt (set after email)
     '',                               // LastEmailSent
     0,                                // EmailsSent
-    CONFIG.SM_STATUS.NOT_CHECKED,    // AppStatus
+    CONFIG.APP_STATUS.NOT_CHECKED,    // AppStatus
     '',                               // AppCheckedAt
     lead.notes         || ''          // Notes
   ]);
@@ -363,7 +367,7 @@ function runDailySequence() {
     if (lead.Stage !== CONFIG.STAGES.ACTIVE) return;
 
     // Stop sequence if application is complete
-    if (lead.AppStatus === CONFIG.SM_STATUS.COMPLETE) {
+    if (lead.AppStatus === CONFIG.APP_STATUS.COMPLETE) {
       updateLeadField(lead.Email, 'Stage', CONFIG.STAGES.APPLIED);
       logActivity(lead.Email, 'Sequence Stopped', 'Application marked complete');
       stopped++;
@@ -394,7 +398,7 @@ function runDailySequence() {
 
     // If draft detected on day-3 step, swap template for Draft Nudge
     var templateName = stepToSend.template;
-    if (lead.AppStatus === CONFIG.SM_STATUS.DRAFT && stepToSend.day === 3) {
+    if (lead.AppStatus === CONFIG.APP_STATUS.DRAFT && stepToSend.day === 3) {
       templateName = 'Draft Nudge';
     }
 
@@ -429,7 +433,7 @@ function runDailySequence() {
 
 function syncApplications() {
   var ss      = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet   = ss.getSheetByName(CONFIG.SHEET_NAMES.SCHOOLMINT);
+  var sheet   = ss.getSheetByName(CONFIG.SHEET_NAMES.APP_IMPORT);
 
   if (!sheet || sheet.getLastRow() < 9) {
     logActivity('system', 'App Sync', 'No data found in Application Import tab');
@@ -476,11 +480,11 @@ function syncApplications() {
 
     var newStatus;
     if (completeVals.indexOf(status) > -1) {
-      newStatus = CONFIG.SM_STATUS.COMPLETE;
+      newStatus = CONFIG.APP_STATUS.COMPLETE;
     } else if (draftVals.indexOf(status) > -1) {
-      newStatus = CONFIG.SM_STATUS.DRAFT;
+      newStatus = CONFIG.APP_STATUS.DRAFT;
     } else {
-      newStatus = CONFIG.SM_STATUS.NO_ACTIVITY;
+      newStatus = CONFIG.APP_STATUS.NO_ACTIVITY;
     }
 
     var existing = findLeadByEmail(email);
@@ -488,10 +492,10 @@ function syncApplications() {
       updateLeadField(email, 'AppStatus',    newStatus);
       updateLeadField(email, 'AppCheckedAt', new Date());
 
-      if (newStatus === CONFIG.SM_STATUS.COMPLETE) {
+      if (newStatus === CONFIG.APP_STATUS.COMPLETE) {
         updateLeadField(email, 'Stage', CONFIG.STAGES.APPLIED);
         logActivity(email, 'Application Complete', 'Detected via application import');
-      } else if (newStatus === CONFIG.SM_STATUS.DRAFT) {
+      } else if (newStatus === CONFIG.APP_STATUS.DRAFT) {
         logActivity(email, 'Draft Detected', 'Application started but not completed');
       }
       updated++;
@@ -522,9 +526,6 @@ function detectColumn(headers, patterns) {
   }
   return -1;
 }
-
-// Keep old function name as alias for backwards compatibility
-function reconcileSchoolMint() { syncApplications(); }
 
 
 // ============================================================
