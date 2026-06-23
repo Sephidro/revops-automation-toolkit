@@ -1,30 +1,26 @@
 // ============================================================
-// NESTERLY v2 — Innovation Charter High School
-// Enrollment Automation System
+// NESTERLY v2 — School Enrollment Automation System
 // ============================================================
 //
-// WHAT'S NEW IN v2:
-//   ✅ Elementor → direct webhook (no Zapier, no email parsing)
-//   ✅ SchoolMint CSV reconciliation (paste export → auto-sync)
-//   ✅ Auto-sequence fires on lead entry — no button press needed
-//   ✅ Sequence timer based on SequenceStartedAt (not LastContact)
-//   ✅ Deduplication by email
-//   ✅ Draft Nudge email for SchoolMint "draft" status leads
-//   ✅ Sequence auto-stops when application is marked complete
-//   ✅ Fixed trigger-safe functions (no ui.alert in auto-runs)
-//   ✅ No duplicate function declarations
-//   ✅ ICHS brand-aligned email templates
+// FEATURES:
+//   - Elementor/website webhook (no Zapier, no email parsing)
+//   - SchoolMint CSV reconciliation (paste export, auto-sync)
+//   - Auto-sequence fires on lead entry (no button press needed)
+//   - Sequence timer based on SequenceStartedAt (not LastContact)
+//   - Deduplication by email
+//   - Draft Nudge email for SchoolMint "draft" status leads
+//   - Sequence auto-stops when application is marked complete
+//   - Trigger-safe functions (no ui.alert in auto-runs)
 //
 // SETUP ORDER:
 //   1. Run setupNesterly()        → creates all sheets
-//   2. Run setupEmailTemplates()  → loads ICHS templates
-//   3. Run createTriggers()       → activates daily automation
-//   4. Deploy as Web App         → get webhook URL for Elementor
+//   2. Run setupEmailTemplates()  → loads starter templates
+//   3. Fill in Settings tab with your school info
+//   4. Run createTriggers()       → activates daily automation
+//   5. (Optional) Deploy as Web App → get webhook URL
 //      Deploy → New Deployment → Web App
 //      Execute as: Me | Access: Anyone
-//   5. Paste /exec URL into Elementor:
-//      Actions After Submit → Webhook → URL
-//   6. Fill in Settings tab with your school info
+//   6. Paste /exec URL into your website form's webhook
 // ============================================================
 
 
@@ -103,12 +99,12 @@ function setupNesterly() {
   initDefaultSettings(ss);
 
   SpreadsheetApp.getUi().alert(
-    '✅ Nesterly v2 setup complete!\n\n' +
+    'Nesterly setup complete!\n\n' +
     'Next steps:\n' +
-    '1. Run: setupEmailTemplates()\n' +
-    '2. Run: createTriggers()\n' +
-    '3. Deploy as Web App → get webhook URL\n' +
-    '4. Fill in the Settings tab with your info'
+    '1. Go to Nesterly > Load Email Templates\n' +
+    '2. Fill in the Settings tab with your school info\n' +
+    '3. Go to Nesterly > Create/Reset Triggers\n' +
+    '4. (Optional) Deploy as Web App for webhook intake'
   );
 }
 
@@ -118,8 +114,8 @@ function createSheetIfNotExists(ss, name, headers) {
     sheet = ss.insertSheet(name);
     var range = sheet.getRange(1, 1, 1, headers.length);
     range.setValues([headers]);
-    range.setBackground('#11392E')
-         .setFontColor('#A2FF57')
+    range.setBackground('#1a73e8')
+         .setFontColor('#ffffff')
          .setFontWeight('bold');
     sheet.setFrozenRows(1);
     Logger.log('Created sheet: ' + name);
@@ -132,14 +128,17 @@ function initDefaultSettings(ss) {
   if (sheet.getLastRow() > 1) return;
 
   var defaults = [
-    ['School Name',             'Innovation Charter High School'],
-    ['Admin Name',              'Xavier'],
+    ['School Name',             '[Your School Name]'],
+    ['Admin Name',              '[Your Name]'],
     ['Admin Email',             ''],
     ['Admin Phone',             ''],
+    ['Admin Title',             'Admissions'],
     ['Website URL',             ''],
-    ['Email Sender Name',       'Innovation Charter High School'],
+    ['Email Sender Name',       '[Your School Name]'],
     ['Reply To Email',          ''],
-    ['Email Signature',         'Grounded in Purpose. Growing in Practice.'],
+    ['Email Signature',         '[Your School Tagline]'],
+    ['Brand Color',             '#1a73e8'],
+    ['Brand Accent Color',      '#ffffff'],
     ['SchoolMint Email Column', 'ParentEmail'],
     ['SchoolMint Status Column','ApplicationStatus'],
     ['Complete Status Values',  'Complete,Submitted,Completed,Finalized'],
@@ -332,20 +331,23 @@ function runDailySequence() {
     var daysSinceStart  = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
     var emailsSentSoFar = parseInt(lead.EmailsSent) || 0;
 
-    // Find the step that should fire today
+    // Find the next step that should fire
     // Step index 0 is day-0 (already sent at lead entry), skip it
+    // Uses >= so a missed trigger day still fires on the next run
     var stepToSend = null;
+    var stepIndex  = -1;
     for (var i = 1; i < CONFIG.SEQUENCE.length; i++) {
       var step = CONFIG.SEQUENCE[i];
-      if (step.day === daysSinceStart && emailsSentSoFar < i + 1) {
+      if (daysSinceStart >= step.day && emailsSentSoFar < i + 1) {
         stepToSend = step;
+        stepIndex  = i;
         break;
       }
     }
 
     if (!stepToSend) return;
 
-    // If draft detected on day-3, swap template for Draft Nudge
+    // If draft detected on day-3 step, swap template for Draft Nudge
     var templateName = stepToSend.template;
     if (lead.SchoolMintStatus === CONFIG.SM_STATUS.DRAFT && stepToSend.day === 3) {
       templateName = 'Draft Nudge';
@@ -357,8 +359,8 @@ function runDailySequence() {
       updateLeadField(lead.Email, 'LastEmailSent', today);
       updateLeadField(lead.Email, 'EmailsSent',    emailsSentSoFar + 1);
 
-      // Mark sequence complete after final email
-      if (stepToSend.day === 7) {
+      // Mark sequence complete after final step
+      if (stepIndex === CONFIG.SEQUENCE.length - 1) {
         updateLeadField(lead.Email, 'Stage', CONFIG.STAGES.COMPLETE);
       }
       sent++;
@@ -462,68 +464,73 @@ function sendSequenceEmail(lead, templateName) {
       return false;
     }
 
+    var settings = getAllSettings();
+
     var tokens = {
       ParentName:    lead.ParentName    || lead.parentName    || '',
       ChildName:     lead.ChildName     || lead.childName     || '',
       GradeInterest: lead.GradeInterest || lead.gradeInterest || '',
-      SchoolName:    getSetting('School Name')       || 'Innovation Charter High School',
-      AdminName:     getSetting('Admin Name')        || 'Xavier',
-      AdminPhone:    getSetting('Admin Phone')       || '',
-      WebsiteURL:    getSetting('Website URL')       || ''
+      SchoolName:    settings['School Name']    || '',
+      AdminName:     settings['Admin Name']     || '',
+      AdminPhone:    settings['Admin Phone']    || '',
+      AdminTitle:    settings['Admin Title']    || '',
+      WebsiteURL:    settings['Website URL']    || ''
     };
 
     var subject   = replaceTokens(template.Subject, tokens);
     var plainText = replaceTokens(template.Content,  tokens);
-    var htmlBody  = formatEmailHTML(plainText);
+    var htmlBody  = formatEmailHTML(plainText, settings);
 
-    GmailApp.sendEmail(
-      lead.Email,
-      subject,
-      plainText,
-      {
-        name:      getSetting('Email Sender Name') || 'Innovation Charter High School',
-        htmlBody:  htmlBody,
-        replyTo:   getSetting('Reply To Email')    || Session.getActiveUser().getEmail()
-      }
-    );
+    var replyTo = settings['Reply To Email'] || '';
+    if (!replyTo) {
+      try { replyTo = Session.getActiveUser().getEmail(); } catch(e) {}
+    }
+
+    var emailOptions = {
+      name:     settings['Email Sender Name'] || settings['School Name'] || '',
+      htmlBody: htmlBody
+    };
+    if (replyTo) emailOptions.replyTo = replyTo;
+
+    GmailApp.sendEmail(lead.Email, subject, plainText, emailOptions);
 
     logActivity(lead.Email, 'Email Sent', 'Template: ' + templateName);
     return true;
 
   } catch (error) {
-    logActivity(lead.Email, 'Email Error', templateName + ': ' + error.toString());
+    logActivity(lead.Email || 'unknown', 'Email Error', templateName + ': ' + error.toString());
     return false;
   }
 }
 
 function replaceTokens(text, data) {
   if (!text) return '';
-  return text
-    .replace(/\{ParentName\}/g,    data.ParentName)
-    .replace(/\{ChildName\}/g,     data.ChildName)
-    .replace(/\{GradeInterest\}/g, data.GradeInterest)
-    .replace(/\{SchoolName\}/g,    data.SchoolName)
-    .replace(/\{AdminName\}/g,     data.AdminName)
-    .replace(/\{AdminPhone\}/g,    data.AdminPhone)
-    .replace(/\{WebsiteURL\}/g,    data.WebsiteURL);
+  return text.replace(/\{([A-Za-z0-9_]+)\}/g, function(match, key) {
+    return data[key] !== undefined ? data[key] : match;
+  });
 }
 
-function formatEmailHTML(content) {
+function formatEmailHTML(content, settings) {
+  var brandColor  = (settings && settings['Brand Color'])        || '#1a73e8';
+  var accentColor = (settings && settings['Brand Accent Color']) || '#ffffff';
+  var schoolName  = (settings && settings['School Name'])        || '';
+  var signature   = (settings && settings['Email Signature'])    || '';
+
   var html = '';
 
-  // ICHS branded header
   html += '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#222;">';
-  html += '<div style="background:#11392E;padding:16px 24px;">';
-  html += '<span style="color:#A2FF57;font-weight:bold;font-size:18px;letter-spacing:1px;">ICHS</span>';
-  html += '<span style="color:#ffffff;font-size:12px;margin-left:10px;opacity:0.8;">Innovation Charter High School</span>';
-  html += '</div>';
 
-  // Body
+  if (schoolName) {
+    html += '<div style="background:' + brandColor + ';padding:16px 24px;">';
+    html += '<span style="color:' + accentColor + ';font-weight:bold;font-size:18px;letter-spacing:1px;">' + schoolName + '</span>';
+    html += '</div>';
+  }
+
   html += '<div style="padding:20px 24px;line-height:1.7;">';
   content.split('\n').forEach(function(line) {
     if (line.trim() === '') {
       html += '<br>';
-    } else if (line.trim().startsWith('•')) {
+    } else if (line.trim().charAt(0) === '•' || line.trim().charAt(0) === '*') {
       html += '<p style="margin:4px 0;padding-left:14px;">&#8226;' + line.trim().substring(1) + '</p>';
     } else {
       html += '<p style="margin:6px 0;">' + line + '</p>';
@@ -531,23 +538,31 @@ function formatEmailHTML(content) {
   });
   html += '</div>';
 
-  // ICHS branded footer
-  html += '<div style="border-top:3px solid #A2FF57;padding:14px 24px;background:#f7f7f7;color:#555;font-size:12px;">';
-  html += '<strong style="color:#11392E;">Innovation Charter High School</strong><br>';
-  html += '<em>Grounded in Purpose. Growing in Practice.</em>';
-  html += '</div></div>';
+  if (schoolName || signature) {
+    html += '<div style="border-top:3px solid ' + brandColor + ';padding:14px 24px;background:#f7f7f7;color:#555;font-size:12px;">';
+    if (schoolName) html += '<strong style="color:' + brandColor + ';">' + schoolName + '</strong><br>';
+    if (signature)  html += '<em>' + signature + '</em>';
+    html += '</div>';
+  }
 
+  html += '</div>';
   return html;
 }
 
 
 // ============================================================
-// SECTION 8: EMAIL TEMPLATES — ICHS Brand Voice
+// SECTION 8: EMAIL TEMPLATES
 // ============================================================
 
 function setupEmailTemplates() {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.TEMPLATES);
+
+  if (!sheet) {
+    sheet = createSheetIfNotExists(ss, CONFIG.SHEET_NAMES.TEMPLATES, [
+      'TemplateName', 'Subject', 'Content', 'SendDelay', 'Description'
+    ]);
+  }
 
   var lastRow = sheet.getLastRow();
   if (lastRow > 1) sheet.deleteRows(2, lastRow - 1);
@@ -563,19 +578,17 @@ function setupEmailTemplates() {
       content: [
         'Hi {ParentName},',
         '',
-        'thanks for taking a look at our school, my name is Xavier, and I\'m excited to help you and {ChildName} learn more about what we offer here at Innovation Charter High School.',
+        'Thanks for your interest in {SchoolName}! My name is {AdminName}, and I\'m excited to help you and {ChildName} learn more about what we offer.',
         '',
-        'Do you have any questions right now I can help you with? I\'d love to invite you both for a tour so you can see everything for yourself!',
+        'Do you have any questions right now I can help with? I\'d love to invite you both for a tour so you can see everything for yourself.',
         '',
-        'Want to visit? Reply to this email or call us at (212) 722-5871',
+        'Want to visit? Reply to this email or call us at {AdminPhone}.',
         '',
-        '• Ready to apply? Fill out or complete your application here: https://bit.ly/Inno-ApplyNow',
-        'Best',
+        'Best,',
         '{AdminName}',
-        'Brand & Systems Manager',
-        'Innovation Charter High School',
-        '{AdminPhone}',
-        'P.S. Did you know? 97% of our students graduate with a clear plan for what comes next. Did YOU know exactly what you were doing after high school?'
+        '{AdminTitle}',
+        '{SchoolName}',
+        '{AdminPhone}'
       ].join('\n')
     },
 
@@ -595,7 +608,7 @@ function setupEmailTemplates() {
         'If you have questions, reply here. If you want to see the school, I\'ll make sure the visit is worth the trip.',
         '',
         '{AdminName}',
-        'Innovation Charter High School',
+        '{SchoolName}',
         '{AdminPhone}'
       ].join('\n')
     },
@@ -615,10 +628,8 @@ function setupEmailTemplates() {
         '',
         'If something stopped you mid-process — a technical issue, a question you didn\'t have an answer to, anything — reply here and I\'ll help you get it done today.',
         '',
-        'Warriors don\'t leave things unfinished.',
-        '',
         '{AdminName}',
-        'Innovation Charter High School',
+        '{SchoolName}',
         '{AdminPhone}'
       ].join('\n')
     },
@@ -626,7 +637,7 @@ function setupEmailTemplates() {
     // ── 4. 5-Day Social Proof ────────────────────────────────
     {
       name:    '5-Day Social Proof',
-      subject: 'What Warriors are actually doing at ICHS',
+      subject: 'See what families are saying about {SchoolName}',
       delay:   5,
       desc:    'Sent 5 days after initial contact if no application activity',
       content: [
@@ -634,20 +645,20 @@ function setupEmailTemplates() {
         '',
         'I\'ll keep this one short.',
         '',
-        'Our application completion rate went from 32% to 72% last year. That\'s not a marketing stat — those are families who showed up, saw what we built, and decided this was the right place.',
+        'Families who visit us and see what we\'ve built tend to stay. That\'s not a marketing line — those are real families who showed up, looked around, and decided this was the right fit.',
         '',
         'Here\'s what they found:',
         '',
-        '• A school with systems that actually work — built in-house because off-the-shelf wasn\'t good enough',
-        '• Staff who show up because the culture holds, not because they have to',
-        '• Programs that go beyond the classroom — media production, entrepreneurship, athletics, design',
+        '• A school that puts students first',
+        '• Staff who care about every child\'s growth',
+        '• Programs that go beyond the classroom',
         '',
         'We\'d love {ChildName} to be part of what comes next.',
         '',
         'Tour is still open. Reply here.',
         '',
         '{AdminName}',
-        'Innovation Charter High School',
+        '{SchoolName}',
         '{AdminPhone}'
       ].join('\n')
     },
@@ -667,10 +678,8 @@ function setupEmailTemplates() {
         '',
         'And if there\'s something specific that made you hesitate — a question we didn\'t answer, a concern about fit, anything — reply and I\'ll be straight with you.',
         '',
-        'Warriors don\'t leave things unresolved.',
-        '',
         '{AdminName}',
-        'Innovation Charter High School',
+        '{SchoolName}',
         '{AdminPhone}'
       ].join('\n')
     }
@@ -682,7 +691,7 @@ function setupEmailTemplates() {
   });
 
   sheet.autoResizeColumns(1, 5);
-  SpreadsheetApp.getUi().alert('✅ 5 ICHS-branded email templates loaded.');
+  try { SpreadsheetApp.getUi().alert('5 email templates loaded. Customize them in the EmailTemplates tab.'); } catch(e) {}
 }
 
 
@@ -722,16 +731,16 @@ function createTriggers() {
 // ============================================================
 
 function onOpen() {
-  SpreadsheetApp.getActiveSpreadsheet().addMenu('⚔️ Nesterly', [
-    { name: '➕ Add New Lead',              functionName: 'showNewLeadForm'       },
-    { name: '📥 Reconcile SchoolMint',       functionName: 'reconcileSchoolMint'   },
-    { name: '▶️ Run Sequence Now (test)',     functionName: 'runDailySequence'      },
-    { name: '📋 Go to Activity Log',         functionName: 'openActivityLog'       },
-    { name: '────────────────',              functionName: 'noop'                  },
-    { name: '⚙️  Setup Sheets',              functionName: 'setupNesterly'         },
-    { name: '📧 Load Email Templates',       functionName: 'setupEmailTemplates'   },
-    { name: '🔁 Create/Reset Triggers',      functionName: 'createTriggers'        },
-    { name: '🌐 Get Webhook URL',            functionName: 'showWebhookUrl'        }
+  SpreadsheetApp.getActiveSpreadsheet().addMenu('Nesterly', [
+    { name: 'Add New Lead',              functionName: 'showNewLeadForm'       },
+    { name: 'Reconcile SchoolMint',      functionName: 'reconcileSchoolMint'   },
+    { name: 'Run Sequence Now (test)',   functionName: 'runDailySequence'      },
+    { name: 'Go to Activity Log',       functionName: 'openActivityLog'       },
+    { name: '────────────────',         functionName: 'noop'                  },
+    { name: 'Setup Sheets',             functionName: 'setupNesterly'         },
+    { name: 'Load Email Templates',     functionName: 'setupEmailTemplates'   },
+    { name: 'Create/Reset Triggers',    functionName: 'createTriggers'        },
+    { name: 'Get Webhook URL',          functionName: 'showWebhookUrl'        }
   ]);
 }
 
@@ -747,20 +756,23 @@ function showWebhookUrl() {
   var url = '';
   try { url = ScriptApp.getService().getUrl(); } catch(e) {}
   SpreadsheetApp.getUi().alert(
-    '🌐 Your Webhook URL\n\n' +
-    (url || '⚠️ Not deployed yet.\n\nGo to:\nDeploy → New Deployment → Web App\nExecute as: Me | Access: Anyone\n\nThen come back here.') +
-    (url ? '\n\nPaste into Elementor:\nActions After Submit → Webhook → URL' : '')
+    'Your Webhook URL\n\n' +
+    (url || 'Not deployed yet.\n\nGo to:\nDeploy → New Deployment → Web App\nExecute as: Me | Access: Anyone\n\nThen come back here.') +
+    (url ? '\n\nPaste this URL into your website form builder\'s webhook/POST action.' : '')
   );
 }
 
 function showNewLeadForm() {
+  var brandColor = getSetting('Brand Color') || '#1a73e8';
+
   var html = HtmlService.createHtmlOutput(
     '<style>' +
     'body{font-family:Arial,sans-serif;padding:16px;font-size:13px;}' +
-    'label{display:block;margin-bottom:10px;}' +
-    'input,select,textarea{width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;' +
+    'label{display:block;margin-bottom:10px;font-weight:500;}' +
+    'input,select,textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;' +
     '  margin-top:3px;box-sizing:border-box;font-size:13px;}' +
-    'button{background:#11392E;color:#A2FF57;padding:10px 20px;border:none;' +
+    'input:focus,select:focus,textarea:focus{outline:none;border-color:' + brandColor + ';}' +
+    'button{background:' + brandColor + ';color:#fff;padding:10px 20px;border:none;' +
     '  border-radius:4px;cursor:pointer;font-weight:bold;width:100%;margin-top:10px;font-size:13px;}' +
     'button:disabled{opacity:0.6;cursor:not-allowed;}' +
     '</style>' +
@@ -769,12 +781,8 @@ function showNewLeadForm() {
     '<label>Email *       <input type="email" name="email"         required></label>' +
     '<label>Phone         <input type="tel"   name="phone"></label>' +
     '<label>Child\'s Name  <input type="text"  name="childName"></label>' +
-    '<label>Grade Interest *' +
-    '  <select name="gradeInterest" required>' +
-    '    <option value="">Select grade...</option>' +
-    '    <option>9th Grade</option><option>10th Grade</option>' +
-    '    <option>11th Grade</option><option>12th Grade</option>' +
-    '  </select>' +
+    '<label>Grade Interest' +
+    '  <input type="text" name="gradeInterest" placeholder="e.g. 9th Grade">' +
     '</label>' +
     '<label>Source' +
     '  <select name="source">' +
@@ -800,9 +808,9 @@ function showNewLeadForm() {
     '    .addLeadFromForm(f);' +
     '}' +
     '</script>'
-  ).setWidth(390).setHeight(530).setTitle('➕ Add New Lead');
+  ).setWidth(390).setHeight(500).setTitle('Add New Lead');
 
-  SpreadsheetApp.getUi().showModalDialog(html, '➕ Add New Lead');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add New Lead');
 }
 
 function addLeadFromForm(formData) {
@@ -842,12 +850,28 @@ function logActivity(email, action, details) {
   sheet.appendRow([new Date(), email, action, details || '']);
 }
 
-function getSetting(name) {
+function getAllSettings() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('nesterly_settings');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
+
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.SHEET_NAMES.SETTINGS);
-  if (!sheet) return null;
+  if (!sheet) return {};
   var data  = getSheetData(sheet);
-  var match = data.find(function(s) { return s.Setting === name; });
-  return match ? match.Value : null;
+  var map   = {};
+  data.forEach(function(row) {
+    if (row.Setting) map[row.Setting] = row.Value || '';
+  });
+
+  try { cache.put('nesterly_settings', JSON.stringify(map), 300); } catch(e) {}
+  return map;
+}
+
+function getSetting(name) {
+  var all = getAllSettings();
+  return all[name] || null;
 }
 
