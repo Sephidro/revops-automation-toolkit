@@ -1,196 +1,255 @@
-/**
- * EMAIL AUTOMATION SYSTEM
- * Handles batch processing of emails for Welcome Series and Follow-ups.
- */
-
-// --- CONFIGURATION ---
-// Customize these generic templates for the initial setup
-var DEFAULT_EMAIL_TEMPLATES = [
-  {
-    TemplateName: 'Initial Response',
-    Subject: 'Welcome to {SchoolName}! 🚀',
-    Content: `Hi {ParentName},
-
-Thanks for reaching out! We are thrilled to introduce you to {SchoolName}.
-
-We offer:
-• Great Program A
-• Great Program B
-• Amazing Community
-
-Reply to this email to schedule a tour!
-
-Best,
-{AdminName}
-{SchoolName}`,
-    SendDelay: 0,
-    Description: 'Sent immediately to new leads.'
-  },
-  {
-    TemplateName: '3-Day Follow-Up',
-    Subject: 'Checking in regarding {SchoolName}',
-    Content: `Hi {ParentName},
-
-Just wanted to float this to the top of your inbox. Do you have time for a tour this week?
-
-Best,
-{AdminName}`,
-    SendDelay: 3,
-    Description: 'Follow-up if no contact after 3 days.'
-  }
-];
-
-// --- TRIGGER FUNCTIONS ---
-
-function sendWelcomeSeriesManual() {
-  var ui = SpreadsheetApp.getUi();
-  var response = ui.alert('Send Welcome Series', 'Send emails to all New Leads? This sends the "Initial Response" template.', ui.ButtonSet.YES_NO);
-  if (response !== ui.Button.YES) return;
-  
-  SpreadsheetApp.getActiveSpreadsheet().toast('Processing emails...', 'Status', -1);
-  var results = processEmailQueue('WELCOME');
-  
-  var msg = 'Emails Sent: ' + results.sent;
-  if (results.errors.length > 0) msg += '\nErrors:\n' + results.errors.join('\n');
-  ui.alert(msg);
-}
-
-function runDailyFollowUps() {
-  console.log('Starting Daily Follow-up Check');
-  processEmailQueue('FOLLOW_UP');
-}
-
-// --- CORE LOGIC ---
-
-function processEmailQueue(mode) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var leadsSheet = ss.getSheetByName('Enrollment CRM');
-  var templatesSheet = ss.getSheetByName('EmailTemplates');
-  
-  if (!leadsSheet || !templatesSheet) throw new Error('Missing required sheets. Run Setup first.');
-
-  var leadsData = leadsSheet.getDataRange().getValues();
-  var headers = leadsData.shift(); 
-  var templates = getSheetData(templatesSheet);
-  var col = mapHeaders(headers);
-  var today = new Date();
-  today.setHours(0,0,0,0);
-  
-  var emailsSent = 0;
-  var errors = [];
-  var updates = [];
-
-  // Load Settings for Token Replacement
-  var config = {
-    schoolName: getSetting('School Name'),
-    adminName: getSetting('Admin Name'),
-    adminPhone: getSetting('Admin Phone'),
-    websiteURL: getSetting('Website URL'),
-    senderName: getSetting('Welcome Email Sender'),
-    replyTo: getSetting('Reply To Email'),
-    signature: getSetting('Email Signature')
-  };
-
-  leadsData.forEach(function(row, index) {
-    var rowIndex = index + 2; 
-    var lead = rowToObject(row, col);
-    var templateToSend = null;
-    var newStage = '';
-    
-    // Logic: Welcome Series
-    if (mode === 'WELCOME' && lead.Stage === 'New Lead') {
-      templateToSend = templates.find(t => t.TemplateName === 'Initial Response');
-      newStage = 'Welcome Series Started';
-    } 
-    // Logic: Follow Ups
-    else if (mode === 'FOLLOW_UP' && lead.Stage === 'New Lead') {
-      var lastContact = new Date(lead.LastContact);
-      lastContact.setHours(0,0,0,0);
-      var daysDiff = Math.floor((today - lastContact) / (1000 * 60 * 60 * 24));
-      
-      var followUpTemplate = templates.find(t => t.SendDelay == daysDiff);
-      if (followUpTemplate) {
-        templateToSend = followUpTemplate;
-        newStage = daysDiff + '-Day Follow-up Sent';
-      }
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Google Sans', Arial, sans-serif;
+      color: #333;
+      padding: 24px;
+      background: #fafafa;
     }
-
-    if (templateToSend) {
-      try {
-        if (sendEmail(lead, templateToSend, config)) {
-          emailsSent++;
-          updates.push({ r: rowIndex, c: col.Stage + 1, val: newStage });
-          updates.push({ r: rowIndex, c: col.LastContact + 1, val: new Date() });
-        }
-      } catch (e) {
-        errors.push(lead.Email + ': ' + e.message);
-      }
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1a73e8;
     }
-  });
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #444;
+      margin-bottom: 4px;
+    }
+    .helper {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    input[type="text"], input[type="email"], textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      background: #fff;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary {
+      background: #1a73e8;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-secondary {
+      background: #f1f3f4;
+      color: #333;
+    }
+    .btn-secondary:hover { background: #e0e2e4; }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .status {
+      text-align: center;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 16px;
+      font-size: 14px;
+      display: none;
+    }
+    .status.success {
+      display: block;
+      background: #e6f4ea;
+      color: #137333;
+    }
+    .status.error {
+      display: block;
+      background: #fce8e6;
+      color: #c5221f;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #e0e0e0;
+      margin: 20px 0;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>CRM Settings</h2>
+  <p class="subtitle">Configure your school details and email preferences.</p>
 
-  // Batch Write Updates
-  if (updates.length > 0) {
-    updates.forEach(u => leadsSheet.getRange(u.r, u.c).setValue(u.val));
-    SpreadsheetApp.flush();
-  }
+  <div class="loading" id="loading">Loading settings...</div>
 
-  return { sent: emailsSent, errors: errors };
-}
+  <form id="settingsForm" style="display:none;">
+    <div class="section-title">School Information</div>
 
-function sendEmail(lead, template, config) {
-  if (!lead.Email) return false;
+    <div class="form-group">
+      <label for="School Name">School Name</label>
+      <input type="text" id="School Name" name="School Name" placeholder="Westlake Academy">
+    </div>
 
-  var tokenData = { ...config, ...lead }; // Merge config and lead data
-  var subject = replaceTokens(template.Subject, tokenData);
-  var rawBody = replaceTokens(template.Content, tokenData);
-  var htmlBody = formatHtmlBody(rawBody, config.signature);
+    <div class="form-group">
+      <label for="Admin Name">Admin Name</label>
+      <input type="text" id="Admin Name" name="Admin Name" placeholder="Jane Smith">
+    </div>
 
-  GmailApp.sendEmail(lead.Email, subject, rawBody, {
-    name: config.senderName,
-    htmlBody: htmlBody,
-    replyTo: config.replyTo
-  });
-  return true;
-}
+    <div class="form-group">
+      <label for="Admin Phone">Admin Phone</label>
+      <input type="text" id="Admin Phone" name="Admin Phone" placeholder="555-0123">
+    </div>
 
-function replaceTokens(text, data) {
-  if (!text) return '';
-  return text.replace(/\{([A-Za-z0-9_]+)\}/g, function(match, key) {
-    return data[key] !== undefined ? data[key] : match;
-  });
-}
+    <div class="form-group">
+      <label for="Website URL">Website URL</label>
+      <input type="text" id="Website URL" name="Website URL" placeholder="www.myschool.edu">
+    </div>
 
-function formatHtmlBody(content, signature) {
-  var formatted = content
-    .replace(/\r\n/g, '\n')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/•/g, '&bull;')
-    .replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+    <hr class="divider">
+    <div class="section-title">Email Settings</div>
 
-  return `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-      <div style="padding: 20px;"><p>${formatted}</p></div>
-      <div style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; color: #666;">
-        ${(signature || '').replace(/\n/g, '<br>')}
-      </div>
-      <div style="margin-top: 20px; font-size: 11px; color: #aaa; text-align: center;">
-        To stop receiving these emails, please reply with "UNSUBSCRIBE".
-      </div>
-    </div>`;
-}
+    <div class="form-group">
+      <label for="Welcome Email Sender">Sender Name</label>
+      <p class="helper">The "From" name recipients will see.</p>
+      <input type="text" id="Welcome Email Sender" name="Welcome Email Sender" placeholder="Admissions Team">
+    </div>
 
-function setupEmailTemplates() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('EmailTemplates');
-  if(!sheet) sheet = ss.insertSheet('EmailTemplates');
-  
-  if (sheet.getLastRow() > 1) sheet.deleteRows(2, sheet.getLastRow() - 1);
-  else sheet.appendRow(['TemplateName', 'Subject', 'Content', 'SendDelay', 'Description']);
+    <div class="form-group">
+      <label for="Reply To Email">Reply-To Email</label>
+      <p class="helper">Leave blank to use your Gmail address.</p>
+      <input type="email" id="Reply To Email" name="Reply To Email" placeholder="admissions@myschool.edu">
+    </div>
 
-  DEFAULT_EMAIL_TEMPLATES.forEach(t => {
-    sheet.appendRow([t.TemplateName, t.Subject, t.Content, t.SendDelay, t.Description]);
-  });
-  
-  sheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#f3f3f3');
-  sheet.autoResizeColumns(1, 5);
-}
+    <div class="form-group">
+      <label for="Email Signature">Email Signature</label>
+      <textarea id="Email Signature" name="Email Signature" rows="3" placeholder="Sincerely,&#10;The Admissions Team"></textarea>
+    </div>
+
+    <hr class="divider">
+    <div class="section-title">CRM Configuration</div>
+
+    <div class="form-group">
+      <label for="Lead Stage Names">Lead Stages</label>
+      <p class="helper">Comma-separated list of stages for lead tracking.</p>
+      <input type="text" id="Lead Stage Names" name="Lead Stage Names" placeholder="New Lead,Contact Made,Tour Scheduled,Enrolled,Declined">
+    </div>
+
+    <div class="form-group">
+      <label for="Lead Sources">Lead Sources</label>
+      <p class="helper">Comma-separated list of lead sources.</p>
+      <input type="text" id="Lead Sources" name="Lead Sources" placeholder="Website,Referral,Social Media,Phone">
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="saveBtn">Save Settings</button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </form>
+
+  <script>
+    var form = document.getElementById('settingsForm');
+    var loading = document.getElementById('loading');
+    var statusEl = document.getElementById('status');
+    var saveBtn = document.getElementById('saveBtn');
+
+    loading.style.display = 'block';
+
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        loading.style.display = 'none';
+        form.style.display = 'block';
+        settings.forEach(function(s) {
+          var field = document.getElementById(s.Setting);
+          if (field) field.value = s.Value || '';
+        });
+      })
+      .withFailureHandler(function(err) {
+        loading.style.display = 'none';
+        form.style.display = 'block';
+        showStatus('Failed to load settings: ' + err.message, 'error');
+      })
+      .getSettingsForUI();
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      statusEl.style.display = 'none';
+
+      var formData = {};
+      var inputs = form.querySelectorAll('input, textarea');
+      inputs.forEach(function(el) {
+        formData[el.name] = el.value;
+      });
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Settings';
+          if (result.success) {
+            showStatus('Settings saved successfully!', 'success');
+          } else {
+            showStatus('Error: ' + result.message, 'error');
+          }
+        })
+        .withFailureHandler(function(err) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Settings';
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .saveSettings(formData);
+    });
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + type;
+    }
+  </script>
+</body>
+</html>

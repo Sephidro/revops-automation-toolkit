@@ -1,85 +1,79 @@
-# 🏫 Google Sheets School CRM & Email Automation
+# Google Sheets School CRM & Email Automation
 
-**A serverless, free CRM for schools to manage enrollment leads, automate welcome emails, and track follow-ups—all inside Google Sheets.**
+**A free, serverless CRM for schools to manage enrollment leads, automate welcome emails, and track follow-ups — all inside Google Sheets.**
 
-> **Note:** This project uses Google Apps Script to turn a standard spreadsheet into a powerful automation engine. No external software or monthly fees required.
+No external software. No monthly fees. Just Google Sheets + Gmail.
 
 ## Features
 
-* **Lead Management:** Track parents, students, grades, and lead stages.
-* **One-Click Welcome Series:** Send welcome emails to batches of new leads instantly.
-* **Automated "Drip" Follow-ups:** Automatically sends follow-up emails 3 days (or any custom duration) after the last contact if the lead hasn't moved stages.
-* **HTML Email Templates:** Beautifully formatted emails with dynamic tokens (e.g., `{ParentName}`, `{ChildName}`).
-* **Settings Dashboard:** A custom sidebar menu to manage your School Name, Signature, and admin details without touching code.
-* **Activity Logging:** A permanent audit trail of every email sent by the system.
+* **Lead Management** — Track parents, students, grades, and lead stages with color-coded status.
+* **One-Click Welcome Series** — Send welcome emails to all new leads instantly.
+* **Automated Follow-ups** — Daily trigger sends follow-up emails after configurable delays.
+* **HTML Email Templates** — Professional emails with dynamic tokens (`{ParentName}`, `{SchoolName}`, etc.).
+* **Settings Dashboard** — Custom dialog to manage your school info without touching code.
+* **Activity Logging** — Permanent audit trail of every email sent.
+* **Data Validation** — Dropdown menus for lead stages and sources to keep data consistent.
+* **Welcome Tab** — Built-in quick-start guide so you're productive in minutes.
 
-## Installation Guide
+## Getting Started
 
-### Step 1: Create the Sheet
-1.  Open [Google Sheets](https://sheets.new).
-2.  Name your spreadsheet (e.g., "School Enrollment CRM").
+### Option A: Template Copy (Recommended)
 
-### Step 2: Install the Code
-1.  In the spreadsheet, go to **Extensions > Apps Script**.
-2.  Delete any default code in the editor.
-3.  Create the following files (using the `+` button) and copy/paste the code from this repository:
-    * `Setup.gs`
-    * `EmailSystem.gs`
-    * `SettingsSystem.gs`
-    * `Utilities.gs`
-    * `SettingsDialog.html`
-4.  Click **Save** (disk icon).
+1. Click the **Make a Copy** link (provided with your purchase).
+2. A new Google Sheet with all code pre-installed will appear in your Google Drive.
+3. Refresh the sheet — you'll see the **School CRM** menu.
+4. Click **School CRM > Run First-Time Setup**.
+5. Grant permissions when prompted.
+6. Done! Check the **Welcome** tab for next steps.
 
-### Step 3: Run Setup
-1.  Refresh your Google Sheet browser tab.
-2.  You will see a new menu item called **⚙️ School CRM**.
-3.  Click **⚙️ School CRM > 1. Run First-Time Setup**.
-4.  Grant the necessary permissions when prompted.
-5.  The script will automatically create 4 tabs: `Enrollment CRM`, `EmailTemplates`, `Settings`, and `ActivityLog`.
+### Option B: Manual Installation
+
+1. Open [Google Sheets](https://sheets.new) and name it (e.g., "School Enrollment CRM").
+2. Go to **Extensions > Apps Script**.
+3. Delete any default code. Create these files (use the `+` button) and paste the code:
+   * `Setup.gs`
+   * `EmailSystem.gs`
+   * `SettingsSystem.gs`
+   * `Utilities.gs`
+   * `SettingsDialog.html`
+   * `appsscript.json` (click the gear icon > check "Show appsscript.json in editor")
+4. Click **Save**, refresh your Google Sheet, and click **School CRM > Run First-Time Setup**.
 
 ## How to Use
 
-### 1. Configuration
-Click **⚙️ School CRM > 3. Open Settings**. Fill in your:
-* School Name
-* Admin Name
-* Email Signature
-* *Tip: These settings are used to fill in the tokens in your email templates.*
+### 1. Configure Settings
+Click **School CRM > Open Settings**. Enter your school name, admin details, and email signature. These fill in the template tokens in your emails.
 
-### 2. Adding Leads
-Go to the **Enrollment CRM** tab and add a lead manually (or connect it to a Google Form).
-* **Required Fields:** `Email`, `ParentName`, `Stage`.
-* **Default Stage:** Set the Stage to `New Lead`.
+### 2. Add Leads
+Go to the **Enrollment CRM** tab. Add leads manually or connect a Google Form. Set the Stage to **New Lead** for new entries.
 
-### 3. Sending Emails
-* **Welcome Series:** Click **⚙️ School CRM > 2. Send Welcome Series**. The system will scan for anyone marked `New Lead`, send the "Initial Response" template, and change their stage to `Welcome Series Started`.
-* **Automated Follow-ups:** Click **⚙️ School CRM > ▶️ Start Automation**. This creates a background trigger that runs daily at 10 AM. It checks if leads have been sitting for 3 days and sends the appropriate follow-up.
+### 3. Send Emails
+* **Welcome Series** — Click **School CRM > Send Welcome Series**. Sends the "Initial Response" template to all leads marked "New Lead".
+* **Automated Follow-ups** — Click **School CRM > Start Automation**. Runs daily at 10 AM and sends follow-ups based on template SendDelay values.
 
-## ⚠️ Important Workflows
+### 4. Customize Templates
+Go to the **EmailTemplates** tab. Edit subjects and content. Available tokens:
+`{ParentName}`, `{ChildName}`, `{SchoolName}`, `{AdminName}`, `{AdminPhone}`, `{WebsiteURL}`, `{GradeInterest}`, `{Source}`
 
-### 1. Connecting a Google Form (Recommended)
-To let parents sign up automatically:
-1. Go to `Tools > Create a new form`.
-2. Add questions for Parent Name, Email, etc.
-3. In the Spreadsheet, you will see a new tab (e.g., "Form Responses 1").
-4. **Rename** that tab to `Enrollment CRM`.
-5. Ensure the column headers match what the script expects (ParentName, Email, etc.).
+## Important Notes
 
-### 2. Handling Replies (Critical!)
-This system is **one-way**. It does not check your Inbox.
-* **Scenario:** If a parent replies to an email, the system does NOT know.
-* **Your Job:** When you receive a reply, you must manually update that lead's Stage in the spreadsheet (e.g., change `New Lead` to `Contact Made`).
-* **Why:** If you don't change the stage, the system will continue sending the automated follow-up emails.
+**Handling Replies:** This system sends emails but does not read your inbox. When a parent replies, manually update their Stage in the CRM to stop automated follow-ups.
 
-### 3. Gmail Sending Limits
-* **Free Gmail Accounts:** ~100 emails/day.
-* **Google Workspace (Paid):** ~1,500 emails/day.
-* The script logs errors to the `ActivityLog` tab if you hit these limits.
+**Gmail Limits:** Free Gmail ~100 emails/day. Google Workspace ~1,500 emails/day.
 
-## 🎨 Customizing Templates
-Go to the **EmailTemplates** tab. You can edit the Subject and Content.
-* **Tokens:** You can use `{ParentName}`, `{ChildName}`, `{SchoolName}`, etc. inside your email body.
-* **SendDelay:** The number of days after the *last contact* to wait before sending this email.
+**Connecting a Google Form:** Create a form with fields for Parent Name, Email, Phone, etc. Rename the linked response tab to "Enrollment CRM" and match the column headers.
 
-## 📄 License
+## File Structure
+
+| File | Purpose |
+|------|---------|
+| `Setup.gs` | Menu creation, first-time setup, Welcome tab, data validation |
+| `EmailSystem.gs` | Email sending, template processing, token replacement |
+| `SettingsSystem.gs` | Settings persistence, dialog management |
+| `Utilities.gs` | Shared helpers for sheet data reading and activity logging |
+| `SettingsDialog.html` | Settings UI form |
+| `appsscript.json` | Project manifest and OAuth scopes |
+
+## License
+
 MIT License. Feel free to use and modify for your school or organization.

@@ -82,10 +82,10 @@ function processEmailQueue(mode) {
 
   // Load Settings for Token Replacement
   var config = {
-    schoolName: getSetting('School Name'),
-    adminName: getSetting('Admin Name'),
-    adminPhone: getSetting('Admin Phone'),
-    websiteURL: getSetting('Website URL'),
+    SchoolName: getSetting('School Name'),
+    AdminName: getSetting('Admin Name'),
+    AdminPhone: getSetting('Admin Phone'),
+    WebsiteURL: getSetting('Website URL'),
     senderName: getSetting('Welcome Email Sender'),
     replyTo: getSetting('Reply To Email'),
     signature: getSetting('Email Signature')
@@ -150,6 +150,8 @@ function sendEmail(lead, template, config) {
     htmlBody: htmlBody,
     replyTo: config.replyTo
   });
+
+  logActivity(lead.Email, 'Email Sent', template.TemplateName + ': ' + subject);
   return true;
 }
 
