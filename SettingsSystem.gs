@@ -3,14 +3,6 @@
  * Uses ScriptProperties for caching to reduce read latency.
  */
 
-function onOpen() {
-  SpreadsheetApp.getUi().createMenu('⚙️ Admin Tools')
-    .addItem('Open Settings', 'showSettings')
-    .addItem('Send Welcome Series', 'sendWelcomeSeriesManual')
-    .addItem('Reset Templates', 'setupEmailTemplates')
-    .addToUi();
-}
-
 function showSettings() {
   var html = HtmlService.createTemplateFromFile('SettingsDialog')
     .evaluate().setWidth(600).setHeight(700).setTitle('⚙️ CRM Settings');
