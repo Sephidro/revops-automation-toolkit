@@ -4,11 +4,11 @@
 //
 // FEATURES:
 //   - Elementor/website webhook (no Zapier, no email parsing)
-//   - SchoolMint CSV reconciliation (paste export, auto-sync)
+//   - Application platform CSV sync (paste export, auto-sync)
 //   - Auto-sequence fires on lead entry (no button press needed)
 //   - Sequence timer based on SequenceStartedAt (not LastContact)
 //   - Deduplication by email
-//   - Draft Nudge email for SchoolMint "draft" status leads
+//   - Draft Nudge email for "draft" status application leads
 //   - Sequence auto-stops when application is marked complete
 //   - Trigger-safe functions (no ui.alert in auto-runs)
 //
@@ -34,7 +34,7 @@ var CONFIG = {
     TEMPLATES:  'EmailTemplates',
     LOG:        'ActivityLog',
     SETTINGS:   'Settings',
-    SCHOOLMINT: 'SchoolMint Import'
+    SCHOOLMINT: 'Application Import'
   },
   STAGES: {
     NEW:       'New Lead',
@@ -75,8 +75,8 @@ function setupNesterly() {
   createSheetIfNotExists(ss, CONFIG.SHEET_NAMES.CRM, [
     'Timestamp', 'ParentName', 'Email', 'Phone', 'ChildName',
     'GradeInterest', 'Source', 'Stage', 'SequenceStartedAt',
-    'LastEmailSent', 'EmailsSent', 'SchoolMintStatus',
-    'SchoolMintCheckedAt', 'Notes'
+    'LastEmailSent', 'EmailsSent', 'AppStatus',
+    'AppCheckedAt', 'Notes'
   ]);
 
   createSheetIfNotExists(ss, CONFIG.SHEET_NAMES.TEMPLATES, [
@@ -91,10 +91,7 @@ function setupNesterly() {
     'Setting', 'Value'
   ]);
 
-  createSheetIfNotExists(ss, CONFIG.SHEET_NAMES.SCHOOLMINT, [
-    'StudentFirstName', 'StudentLastName', 'ParentEmail',
-    'ApplicationStatus', 'SubmittedDate', 'LastUpdated'
-  ]);
+  setupImportTab(ss);
 
   initDefaultSettings(ss);
 
@@ -139,8 +136,6 @@ function initDefaultSettings(ss) {
     ['Email Signature',         '[Your School Tagline]'],
     ['Brand Color',             '#1a73e8'],
     ['Brand Accent Color',      '#ffffff'],
-    ['SchoolMint Email Column', 'ParentEmail'],
-    ['SchoolMint Status Column','ApplicationStatus'],
     ['Complete Status Values',  'Complete,Submitted,Completed,Finalized'],
     ['Draft Status Values',     'Draft,In Progress,Started,Incomplete']
   ];
@@ -149,16 +144,66 @@ function initDefaultSettings(ss) {
   Logger.log('Default settings initialized');
 }
 
+function setupImportTab(ss) {
+  var name = CONFIG.SHEET_NAMES.SCHOOLMINT;
+  var sheet = ss.getSheetByName(name);
+  if (sheet) return sheet;
+
+  sheet = ss.insertSheet(name);
+
+  var instructions = [
+    ['APPLICATION IMPORT — Paste your export data below', '', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['HOW TO USE:', '', '', '', '', ''],
+    ['1. Export a CSV or spreadsheet from your application platform (SchoolMint, Ravenna, OpenApply, etc.)', '', '', '', '', ''],
+    ['2. Open the exported file and copy ALL rows including the header row', '', '', '', '', ''],
+    ['3. Paste starting in row 8 below (overwrite the example headers)', '', '', '', '', ''],
+    ['4. Go to Nesterly > Sync Applications — the system will auto-detect your email and status columns', '', '', '', '', ''],
+    ['ParentEmail', 'ApplicationStatus', 'StudentFirstName', 'StudentLastName', 'SubmittedDate', 'LastUpdated']
+  ];
+
+  sheet.getRange(1, 1, instructions.length, 6).setValues(instructions);
+
+  sheet.getRange(1, 1, 1, 6)
+    .merge()
+    .setFontSize(13)
+    .setFontWeight('bold')
+    .setFontColor('#1a73e8')
+    .setBackground('#e8f0fe');
+
+  sheet.getRange(3, 1, 5, 6).forEach(function(cell) {});
+  sheet.getRange(3, 1, 5, 1)
+    .setFontColor('#555')
+    .setFontStyle('italic');
+
+  sheet.getRange(8, 1, 1, 6)
+    .setFontWeight('bold')
+    .setBackground('#1a73e8')
+    .setFontColor('#ffffff');
+
+  sheet.setFrozenRows(8);
+  sheet.setColumnWidth(1, 200);
+  sheet.setColumnWidth(2, 200);
+  sheet.setColumnWidth(3, 180);
+  sheet.setColumnWidth(4, 180);
+  sheet.setColumnWidth(5, 150);
+  sheet.setColumnWidth(6, 150);
+
+  sheet.getRange(1, 1, instructions.length, 6).setWrap(true);
+
+  return sheet;
+}
+
 
 // ============================================================
-// SECTION 3: WEBHOOK ENDPOINT (replaces Zapier entirely)
+// SECTION 3: WEBHOOK ENDPOINT
 // ============================================================
-// After deploying as a Web App, paste the /exec URL into
-// Elementor: Actions After Submit → Webhook → URL
-// Elementor sends form data as JSON or form-encoded POST.
+// After deploying as a Web App, paste the /exec URL into your
+// website form builder (Elementor, Webflow, Typeform, etc.)
+// as a webhook/POST action.
 //
-// Map your Elementor field IDs below in the 'lead' object.
-// To find field IDs: Elementor editor → form field → Advanced → ID
+// Map your form field IDs below in the 'lead' object.
+// Common field names are auto-detected (see fallback chain).
 // ============================================================
 
 function doPost(e) {
@@ -173,8 +218,8 @@ function doPost(e) {
       return jsonResponse({ status: 'error', message: 'No data received' });
     }
 
-    // ── Map Elementor field IDs to lead fields ──────────────
-    // Update the keys on the RIGHT to match your Elementor field IDs
+    // ── Map form field names to lead fields ──────────────
+    // Handles common field naming conventions automatically
     var lead = {
       parentName:    data.parent_name   || data.parentName   || data.name         || '',
       email:        (data.email         || data.parent_email || '').toLowerCase().trim(),
@@ -233,8 +278,8 @@ function addLead(lead, sendEmail) {
     '',                               // SequenceStartedAt (set after email)
     '',                               // LastEmailSent
     0,                                // EmailsSent
-    CONFIG.SM_STATUS.NOT_CHECKED,    // SchoolMintStatus
-    '',                               // SchoolMintCheckedAt
+    CONFIG.SM_STATUS.NOT_CHECKED,    // AppStatus
+    '',                               // AppCheckedAt
     lead.notes         || ''          // Notes
   ]);
 
@@ -318,9 +363,9 @@ function runDailySequence() {
     if (lead.Stage !== CONFIG.STAGES.ACTIVE) return;
 
     // Stop sequence if application is complete
-    if (lead.SchoolMintStatus === CONFIG.SM_STATUS.COMPLETE) {
+    if (lead.AppStatus === CONFIG.SM_STATUS.COMPLETE) {
       updateLeadField(lead.Email, 'Stage', CONFIG.STAGES.APPLIED);
-      logActivity(lead.Email, 'Sequence Stopped', 'Application complete in SchoolMint');
+      logActivity(lead.Email, 'Sequence Stopped', 'Application marked complete');
       stopped++;
       return;
     }
@@ -349,7 +394,7 @@ function runDailySequence() {
 
     // If draft detected on day-3 step, swap template for Draft Nudge
     var templateName = stepToSend.template;
-    if (lead.SchoolMintStatus === CONFIG.SM_STATUS.DRAFT && stepToSend.day === 3) {
+    if (lead.AppStatus === CONFIG.SM_STATUS.DRAFT && stepToSend.day === 3) {
       templateName = 'Draft Nudge';
     }
 
@@ -375,42 +420,59 @@ function runDailySequence() {
 
 
 // ============================================================
-// SECTION 6: SCHOOLMINT RECONCILIATION
+// SECTION 6: APPLICATION SYNC
 // ============================================================
-// 1. Export your SchoolMint data as CSV
-// 2. Paste it into the 'SchoolMint Import' tab
-//    (column headers must include ParentEmail + ApplicationStatus
-//     or update the Settings tab to match your export's column names)
-// 3. Run reconcileSchoolMint() from the menu
-//    — or it can run on a trigger if you add it in createTriggers()
+// 1. Export data from your application platform (SchoolMint, Ravenna, OpenApply, etc.)
+// 2. Paste into the 'Application Import' tab (starting at row 8)
+// 3. Run syncApplications() from the Nesterly menu
+//    The system auto-detects email and status columns from your headers.
 
-function reconcileSchoolMint() {
-  var ss       = SpreadsheetApp.getActiveSpreadsheet();
-  var smSheet  = ss.getSheetByName(CONFIG.SHEET_NAMES.SCHOOLMINT);
-  var smData   = getSheetData(smSheet);
+function syncApplications() {
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet   = ss.getSheetByName(CONFIG.SHEET_NAMES.SCHOOLMINT);
 
-  if (smData.length === 0) {
-    logActivity('system', 'SchoolMint Reconcile', 'Import tab is empty — nothing to reconcile');
-    try { SpreadsheetApp.getUi().alert('SchoolMint Import tab is empty. Paste your CSV export there first.'); } catch(e) {}
+  if (!sheet || sheet.getLastRow() < 9) {
+    logActivity('system', 'App Sync', 'No data found in Application Import tab');
+    try { SpreadsheetApp.getUi().alert('No data found.\n\nPaste your exported application data into the "Application Import" tab starting at row 8, then try again.'); } catch(e) {}
     return;
   }
 
-  // Read column name mappings from Settings
-  var emailCol     = getSetting('SchoolMint Email Column')  || 'ParentEmail';
-  var statusCol    = getSetting('SchoolMint Status Column') || 'ApplicationStatus';
-  var completeVals = (getSetting('Complete Status Values')  || 'Complete,Submitted')
+  var allData = sheet.getDataRange().getValues();
+  var headers = allData[7];
+  var rows    = allData.slice(8);
+
+  if (rows.length === 0) {
+    try { SpreadsheetApp.getUi().alert('No data rows found below the header row (row 8).\n\nPaste your export starting at row 8.'); } catch(e) {}
+    return;
+  }
+
+  var emailColIdx  = detectColumn(headers, ['email', 'e-mail', 'parent_email', 'parentemail', 'parent email', 'guardian_email', 'contact_email']);
+  var statusColIdx = detectColumn(headers, ['status', 'application_status', 'applicationstatus', 'app_status', 'appstatus', 'application status']);
+
+  if (emailColIdx === -1) {
+    try { SpreadsheetApp.getUi().alert('Could not find an email column.\n\nMake sure your pasted data has a header containing "Email" in row 8.'); } catch(e) {}
+    return;
+  }
+
+  if (statusColIdx === -1) {
+    try { SpreadsheetApp.getUi().alert('Could not find a status column.\n\nMake sure your pasted data has a header containing "Status" in row 8.\n\nIf your export doesn\'t have a status column, add one manually.'); } catch(e) {}
+    return;
+  }
+
+  var completeVals = (getSetting('Complete Status Values') || 'Complete,Submitted,Completed,Finalized')
     .split(',').map(function(s) { return s.trim().toLowerCase(); });
-  var draftVals    = (getSetting('Draft Status Values')     || 'Draft,In Progress')
+  var draftVals = (getSetting('Draft Status Values') || 'Draft,In Progress,Started,Incomplete')
     .split(',').map(function(s) { return s.trim().toLowerCase(); });
 
   var updated  = 0;
   var notFound = 0;
+  var skipped  = 0;
 
-  smData.forEach(function(smRow) {
-    var email  = smRow[emailCol]  ? smRow[emailCol].toString().toLowerCase().trim()  : '';
-    var status = smRow[statusCol] ? smRow[statusCol].toString().toLowerCase().trim() : '';
+  rows.forEach(function(row) {
+    var email  = row[emailColIdx]  ? row[emailColIdx].toString().toLowerCase().trim()  : '';
+    var status = row[statusColIdx] ? row[statusColIdx].toString().toLowerCase().trim() : '';
 
-    if (!email) return;
+    if (!email) { skipped++; return; }
 
     var newStatus;
     if (completeVals.indexOf(status) > -1) {
@@ -423,12 +485,12 @@ function reconcileSchoolMint() {
 
     var existing = findLeadByEmail(email);
     if (existing) {
-      updateLeadField(email, 'SchoolMintStatus',    newStatus);
-      updateLeadField(email, 'SchoolMintCheckedAt', new Date());
+      updateLeadField(email, 'AppStatus',    newStatus);
+      updateLeadField(email, 'AppCheckedAt', new Date());
 
       if (newStatus === CONFIG.SM_STATUS.COMPLETE) {
         updateLeadField(email, 'Stage', CONFIG.STAGES.APPLIED);
-        logActivity(email, 'Application Complete', 'Detected via SchoolMint import');
+        logActivity(email, 'Application Complete', 'Detected via application import');
       } else if (newStatus === CONFIG.SM_STATUS.DRAFT) {
         logActivity(email, 'Draft Detected', 'Application started but not completed');
       }
@@ -438,11 +500,31 @@ function reconcileSchoolMint() {
     }
   });
 
-  var msg = 'Reconciliation complete.\nUpdated: ' + updated + '\nNot in CRM: ' + notFound;
-  logActivity('system', 'SchoolMint Reconcile', msg.replace(/\n/g, ' | '));
+  var msg = 'Sync complete!\n\n' +
+    'Matched & updated: ' + updated + '\n' +
+    'Not in CRM: ' + notFound +
+    (skipped > 0 ? '\nSkipped (no email): ' + skipped : '');
 
-  try { SpreadsheetApp.getUi().alert('✅ ' + msg); } catch(e) {}
+  logActivity('system', 'App Sync',
+    'Updated: ' + updated + ' | Not in CRM: ' + notFound + ' | Skipped: ' + skipped +
+    ' | Email col: ' + headers[emailColIdx] + ' | Status col: ' + headers[statusColIdx]);
+
+  try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
 }
+
+function detectColumn(headers, patterns) {
+  for (var i = 0; i < headers.length; i++) {
+    var h = headers[i].toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (var j = 0; j < patterns.length; j++) {
+      var p = patterns[j].replace(/[^a-z0-9]/g, '');
+      if (h === p || h.indexOf(p) > -1) return i;
+    }
+  }
+  return -1;
+}
+
+// Keep old function name as alias for backwards compatibility
+function reconcileSchoolMint() { syncApplications(); }
 
 
 // ============================================================
@@ -618,7 +700,7 @@ function setupEmailTemplates() {
       name:    'Draft Nudge',
       subject: '{ChildName} is one step away — don\'t let the draft expire',
       delay:   3,
-      desc:    'Replaces 3-Day Follow-Up when SchoolMint shows a draft application',
+      desc:    'Replaces 3-Day Follow-Up when application status shows a draft',
       content: [
         'Hi {ParentName},',
         '',
@@ -718,9 +800,9 @@ function createTriggers() {
 
   try {
     SpreadsheetApp.getUi().alert(
-      '✅ Triggers active.\n\n' +
+      'Triggers active.\n\n' +
       'Sequence runs daily at 9am.\n\n' +
-      'SchoolMint reconciliation is manual — run it from the menu after each CSV export.'
+      'Application sync is manual — run it from the menu after each CSV export.'
     );
   } catch(e) {}
 }
@@ -733,7 +815,7 @@ function createTriggers() {
 function onOpen() {
   SpreadsheetApp.getActiveSpreadsheet().addMenu('Nesterly', [
     { name: 'Add New Lead',              functionName: 'showNewLeadForm'       },
-    { name: 'Reconcile SchoolMint',      functionName: 'reconcileSchoolMint'   },
+    { name: 'Sync Applications',          functionName: 'syncApplications'      },
     { name: 'Run Sequence Now (test)',   functionName: 'runDailySequence'      },
     { name: 'Go to Activity Log',       functionName: 'openActivityLog'       },
     { name: '────────────────',         functionName: 'noop'                  },
